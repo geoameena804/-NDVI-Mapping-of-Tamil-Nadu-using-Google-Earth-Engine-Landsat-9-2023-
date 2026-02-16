@@ -1,0 +1,105 @@
+🌿 NDVI Mapping of Tamil Nadu using Google Earth Engine (Landsat 9, 2023) 🌍
+
+I created an NDVI (Normalized Difference Vegetation Index) map for Tamil Nadu using Landsat 9 imagery through JavaScript in Google Earth Engine.
+
+Dataset Used: 
+LANDSAT/LC09/C02/T1_TOA (Landsat 9 Top-of-Atmosphere reflectance)
+
+NDVI Formula (for Landsat 8/9): 
+NDVI = (Band 5 - Band 4) / (Band 5 + Band 4) 
+Where: 
+- Band 5 = NIR (Near Infrared) 
+- Band 4 = RED
+
+✅ Workflow: 
+- Imported and processed imagery in GEE 
+- Applied NDVI calculation using JavaScript 
+- Exported results and reclassified NDVI in ArcGIS PRO for visual interpretation
+
+📌 Key NDVI Insights: 
+- Positive (+1) indicates very healthy, dense, green vegetation 
+- Negative (-1) indicates non-vegetated surfaces like water or snow 
+- Positive NDVI values = the presence of vegetation 
+- Negative NDVI values = the absence of vegetation
+
+This project strengthened my understanding of remote sensing workflows, vegetation monitoring, and GEE-ArcGIS integration.
+
+hashtag#Landsat9 hashtag#NDVI hashtag#GoogleEarthEngine hashtag#RemoteSensing hashtag#ArcGIS hashtag#GeospatialAnalysis hashtag#EarthObservation hashtag#TamilNadu hashtag#GEE hashtag
+
+#VegetationIndex hashtag#LearningJourney hashtag#ISRO hashtag#GitHub hashtag#Geology
+
+TAMIL_NADU_LANDSAT9
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var AOI = ee.FeatureCollection("projects/ee-ameenarazi0919/assets/TAMILNADU_STATE_BDY");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+
+// Define Date Range
+var startDate = '2023-01-01';
+var endDate = '2023-12-31';
+
+// Load Landsat 9 TOA Image Collection
+var landsat9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_TOA")
+  .filterBounds(AOI)
+  .filterDate(startDate, endDate)
+  .filterMetadata('CLOUD_COVER', 'less_than', 10);
+
+// Function to compute NDVI
+var calcNDVI = function(image) {
+  var ndvi = image.normalizedDifference(['B5', 'B4']).rename('NDVI');
+  return ndvi.copyProperties(image, ['system:time_start']);
+};
+
+// Apply NDVI calculation to the image collection
+var ndviCollection = landsat9.map(calcNDVI);
+
+// Create a list of months
+var months = ee.List.sequence(1, 12);
+
+// Compute mean NDVI for each month
+var monthlyNDVI = ee.ImageCollection(
+  months.map(function(m) {
+    m = ee.Number(m);
+    var filtered = ndviCollection.filter(ee.Filter.calendarRange(m, m, 'month'));
+    var mean = filtered.mean().set({
+      'month': m,
+      'system:time_start': ee.Date.fromYMD(2023, m, 1).millis()
+    });
+    return mean;
+  })
+);
+
+// Visualization parameters
+var ndviParams = {min: -1, max: 1, palette: ['yellow', 'green', 'red']};
+
+// Center and add median NDVI to the map
+Map.centerObject(AOI, 9);
+Map.addLayer(monthlyNDVI.median().clip(AOI), ndviParams, 'Median NDVI 2023');
+
+var chart = ui.Chart.image.series({
+  imageCollection: monthlyNDVI,
+  region: AOI,
+  reducer: ee.Reducer.mean(),
+  scale: 250,  // coarser resolution reduces number of pixels
+  xProperty: 'system:time_start'
+}).setOptions({
+  title: 'Monthly NDVI Time Series (2023)',
+  vAxis: {title: 'NDVI'},
+  hAxis: {title: 'Date'},
+  lineWidth: 2,
+  pointSize: 4
+});
+print(chart);
+
+
+
+// Export all 12 NDVI bands as a single image (1 band per month)
+Export.image.toDrive({
+  image: monthlyNDVI.toBands().clip(AOI),
+  description: 'Monthly_NDVI_2023',
+  folder: 'GEE_Exports', // Optional: name of your Google Drive folder
+  fileNamePrefix: 'NDVI_2023',
+  scale: 30,
+  region: AOI,
+  maxPixels: 1e13
+});
+
